@@ -55,6 +55,6 @@ jobs:
               env:
                   PROBLEM-1_RESULTS: "${{steps.problem-1.outputs.result}}"
                   PROBLEM-2_RESULTS: "${{steps.problem-2.outputs.result}}"
-                  PROBLEM-2_RESULTS: "${{steps.problem-3.outputs.result}}"
+                  PROBLEM-3_RESULTS: "${{steps.problem-3.outputs.result}}"
               with:
                   runners: problem-1, problem-2, problem-3
