@@ -5,31 +5,34 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 contract DeFiHackLabsVault {
     uint256 public constant DURATION = 1 weeks;
-    uint256 public constant MAXIMUMVOTE = 8;
+    uint256 public constant MAXIMUMVOTES = 15;
 
     uint256 public immutable DEADLINE;
     address public immutable votingToken;
 
     struct Proposal {
         address receiver;
+        bool executed;
         uint256 amount;
     }
 
     mapping(address account => bool) public isVoted;
-    mapping(uint256 proposalId => uint256 votes) public votingAccount;
-    mapping(uint256 proposalId => Proposal) public proposalInfo;
+    mapping(uint256 id => bool) public isExecuted;
+    mapping(uint256 id => uint256 votes) public voteCounts;
+    mapping(uint256 id => Proposal) public proposalInfo;
 
     uint256 public proposalId;
     uint256 public hightestVote;
 
     error InvalidMsgValue();
-    error ZeroAddress();
-    error ZeroAmount();
-    error NotEnoughToken();
+    error InvalidProposal();
+    error NotDeFiHackLabsMember();
     error UnknownProposal();
-    error FailToSendETH();
+    error FailToGrantFunds();
     error VotingNotClose();
-    error IsVoted();
+    error AlreadyVoted();
+    error AlreadyExecuted();
+    error CannotExecuteProposal(uint256 id);
 
     constructor(address _votingToken) {
         DEADLINE = block.timestamp + DURATION;
@@ -38,43 +41,59 @@ contract DeFiHackLabsVault {
 
     function createProposal(Proposal calldata proposal) external payable returns (uint256) {
         if (msg.value != 1 ether) revert InvalidMsgValue();
-        if (proposal.receiver == address(0)) revert ZeroAddress();
-        if (proposal.amount == 0) revert ZeroAmount();
+        if (proposal.receiver == address(0) || proposal.amount == 0 || proposal.executed == true) {
+            revert InvalidProposal();
+        }
 
         uint256 count = IERC1155(votingToken).balanceOf(msg.sender, 0) * 3;
         count += IERC1155(votingToken).balanceOf(msg.sender, 1);
-        if (count == 0) revert NotEnoughToken();
 
-        votingAccount[proposalId] += count;
+        if (count == 0) revert NotDeFiHackLabsMember();
+        if (count > hightestVote) hightestVote = count;
+
+        voteCounts[proposalId] = count;
         proposalInfo[proposalId] = proposal;
-        hightestVote = hightestVote < votingAccount[proposalId] ? votingAccount[proposalId] : hightestVote;
 
         return proposalId++;
     }
 
     function vote(uint256 id) external {
-        if (votingAccount[id] == 0) revert UnknownProposal();
-        if (isVoted[msg.sender]) revert IsVoted();
+        if (isVoted[msg.sender]) revert AlreadyVoted();
+        uint256 votes = voteCounts[id];
+        if (votes == 0) revert UnknownProposal();
 
         uint256 count = IERC1155(votingToken).balanceOf(msg.sender, 0) * 3;
         count += IERC1155(votingToken).balanceOf(msg.sender, 1);
 
-        votingAccount[id] += count;
-        hightestVote = hightestVote < votingAccount[id] ? votingAccount[id] : hightestVote;
+        if (votes + count > hightestVote) {
+            hightestVote = votes + count;
+        }
+
+        voteCounts[id] += count;
     }
 
     function execute(uint256 id) external {
-        Proposal memory p = proposalInfo[id];
+        if (isExecuted[id]) revert AlreadyExecuted();
+        uint256 votes = voteCounts[id];
+        if (votes == 0) revert UnknownProposal();
 
-        if (votingAccount[id] == MAXIMUMVOTE) {
-            uint256 amount = address(this).balance > p.amount ? p.amount : address(this).balance;
-            (bool success,) = p.receiver.call{value: amount}("");
-            if (!success) revert FailToSendETH();
-        } else {
+        Proposal memory p = proposalInfo[id];
+        uint256 amount = address(this).balance > p.amount ? p.amount : address(this).balance;
+
+        if (votes >= MAXIMUMVOTES) {
+            grantFunds(id, p.receiver, amount);
+        } else if (votes == hightestVote) {
             if (block.timestamp < DEADLINE) revert VotingNotClose();
-            uint256 amount = address(this).balance > p.amount ? p.amount : address(this).balance;
-            (bool success,) = p.receiver.call{value: amount}("");
-            if (!success) revert FailToSendETH();
+            grantFunds(id, p.receiver, amount);
+        } else {
+            revert CannotExecuteProposal(id);
         }
+    }
+
+    function grantFunds(uint256 id, address receiver, uint256 amount) private {
+        (bool success,) = receiver.call{value: amount}("");
+        if (!success) revert FailToGrantFunds();
+
+        isExecuted[id] = true;
     }
 }

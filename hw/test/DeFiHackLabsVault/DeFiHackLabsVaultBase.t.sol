@@ -9,24 +9,31 @@ import {DeFiHackLabsVault} from "src/DeFiHackLabsVault/DeFiHackLabsVault.sol";
  * DO NOT MODIFY THIS FILE, OR YOU WILL GET ZERO POINTS FROM THIS CHALLENGE
  */
 contract DeFiHackLabsVaultBaseTest is Test {
-    address internal player = makeAddr("player");
-
     address internal wallet = makeAddr("SlowMistWallet");
+
+    address internal sun = makeAddr("Sun");
     address internal alex = makeAddr("Alex");
     address internal alice = makeAddr("Alice");
     address internal louis = makeAddr("Louis");
     address internal bill = makeAddr("Bill");
-    address internal sun = makeAddr("Sun");
+    address internal player = makeAddr("player");
 
     DeFiHackLabsToken internal deFiHackLabsToken;
     DeFiHackLabsVault internal deFiHackLabsVault;
 
-    modifier checkSolved() {
-        _;
+    uint256 private proposalId;
 
+    modifier checkSolved() {
         voteByDeFiHackLabsMember();
-        vm.warp(block.timestamp + 1 weeks);
-        deFiHackLabsVault.execute(0);
+
+        vm.startPrank(player);
+        _;
+        vm.stopPrank();
+
+        if (address(deFiHackLabsVault).balance > 0) {
+            vm.warp(block.timestamp + 1 weeks);
+            deFiHackLabsVault.execute(proposalId);
+        }
 
         _isSolved();
     }
@@ -34,6 +41,7 @@ contract DeFiHackLabsVaultBaseTest is Test {
     function setUp() public virtual {
         vm.startPrank(sun);
         deFiHackLabsToken = new DeFiHackLabsToken();
+        // mint ERC1155 tokens to DeFiHackLabs' member, id 0 is for admin, and id 1 is for member
         deFiHackLabsToken.mint(sun, 0, 1, "");
         deFiHackLabsToken.mint(alex, 1, 1, "");
         deFiHackLabsToken.mint(louis, 1, 1, "");
@@ -58,28 +66,35 @@ contract DeFiHackLabsVaultBaseTest is Test {
         DeFiHackLabsVault.Proposal memory proposal;
         proposal.receiver = wallet;
         proposal.amount = 2 ether;
-        uint256 id = deFiHackLabsVault.createProposal{value: 1 ether}(proposal);
+        proposalId = deFiHackLabsVault.createProposal{value: 1 ether}(proposal);
         vm.stopPrank();
 
         vm.startPrank(alex);
-        deFiHackLabsVault.vote(id);
+        deFiHackLabsVault.vote(proposalId);
         vm.stopPrank();
 
         vm.startPrank(alice);
-        deFiHackLabsVault.vote(id);
+        deFiHackLabsVault.vote(proposalId);
         vm.stopPrank();
 
         vm.startPrank(louis);
-        deFiHackLabsVault.vote(id);
+        deFiHackLabsVault.vote(proposalId);
         vm.stopPrank();
 
         vm.startPrank(bill);
-        deFiHackLabsVault.vote(id);
+        deFiHackLabsVault.vote(proposalId);
         vm.stopPrank();
     }
 
     function _isSolved() private view {
-        assertEq(address(deFiHackLabsVault).balance, 0);
-        assertEq(player.balance, 7 ether);
+        // Player cannot use other DeFiHackLabs members' ETH.
+        assertEq(sun.balance, 0 ether);
+        assertEq(alex.balance, 1 ether);
+        assertEq(alice.balance, 1 ether);
+        assertEq(louis.balance, 1 ether);
+        assertEq(bill.balance, 1 ether);
+
+        assertEq(address(deFiHackLabsVault).balance, 0, "vault still has ETH");
+        assertEq(player.balance, 7 ether, "Not enough ETH in player account");
     }
 }
