@@ -26,7 +26,7 @@ contract DeFiHackLabsVaultBaseTest is Test {
     modifier checkSolved() {
         voteByDeFiHackLabsMember();
 
-        vm.startPrank(player);
+        vm.startPrank(player, player);
         _;
         vm.stopPrank();
 

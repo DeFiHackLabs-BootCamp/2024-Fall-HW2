@@ -26,5 +26,6 @@ contract MagicWalletBaseTest is Test {
 
     function _isSolved() private view {
         assertEq(address(magicWallet).balance, 0);
+        assertEq(player.balance, 1338 ether);
     }
 }
